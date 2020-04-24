@@ -1,0 +1,153 @@
+---
+title: "pipeline_parnsip"
+output: rmarkdown::github_document
+---
+<script src="https://gist.github.com/jonschlinkert/5854601.js"></script>
+[![CRAN\_Status\_Badge](http://www.r-pkg.org/badges/version/parsnip)](https://cran.rstudio.com/package=parsnip)
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.path = "img/logo.png",
+  out.width = "100%"
+)
+```
+
+the story behind *Parnsip* is quite funny it comes from a vegetable and it comes from a misunderstaning the word carrot with the `caret` package for modelling.
+
+the idea comes from the fact that R, before *Parnsip* did not have any conventions in modelling packages, and so each functions and model requires some *formatted* data instead of others. Talking about prediction we could have a plenty of formats like data frame, a matrix or a multidimensional array.  So the point is to go from model to model without stressing to much on syntax. 
+
+We do not want to remeber all the stuffs, it is like `caret` but the tidyier version of it. Recall that `caret` was originally written in **2005**, so pretty old syntax.
+
+the road map starts with the selection of the model you want to apply say _linear model_, _logistic regression_, _SVM_ and so on...
+
+--- 
+
+## `parsnip` 
+
+
+The package 
+
+ * creates a unified interface to models
+ 
+ * organizes them by model type (e.g. logistic regression, MARS, etc)
+ 
+ * generalizes _how_ to fit them (aka their _computational engine_)
+ 
+ * has a tidy interface
+ 
+ * returns predictable objects
+ 
+ 
+##  Example: Linear Regression
+
+say that you want to apply linear regression with the `linear_reg()` to some data and add a penalty, here a L2 penalty (0.01). If you want to use the `glmnet` or `spark` `stan` `keras` instead of the `lm()` you can do that, why? `pransip` permits to **decouple** the _estimation procedure_ and the _package that you use_ to accomplish that from the actual specification model (lm glmnet), and this is the part of computational engine. One other cool thing about the engine is that they can also be outside R, they can ne in *Python* as well in the scikit-learn.
+
+
+Like `ggplot2` and `recipes`, `parsnip` defers the computations until specific point. 
+
+
+Let's create a model with a ridge penalty (i.e. weight decay). A model specification is created:
+
+```{r spec, message=FALSE}
+library(tidymodels)
+reg_model <- linear_reg(penalty = 0.01)
+reg_model
+```
+
+```{r glmnet}
+reg_model %>% 
+  set_engine("glmnet")
+```
+
+A further spexification since it is a *crucial* passage: what is happening it is because many packages includes the same thing aka ways to perform linear regression. `lm()` can be done in base R or via the glm package, so once you identify the engine you put it in the computational engine, via the function `set_engine()`.
+One important thing is that you are not doing anything for the moment, you are just preparing the model to the point final point where at the end you are fitting it in the data.
+As a matter of fact you are not imputting data since the beginning. Once you specified the model, don't worry, you fit the model, with the formula and the dataset in the `fit()` part in the chunk below:
+
+
+```{r glmnet-fit-form}
+reg_model %>% 
+  set_engine("glmnet") %>% 
+  fit(mpg ~ ., data = mtcars)
+```
+
+
+```{r glmnet-fit-xy}
+reg_model %>% 
+  set_engine("glmnet") %>% 
+  fit_xy(x = mtcars %>% select(-mpg), 
+         y = mtcars$mpg)
+```
+
+Above You are doing things twice. You use the `fit()` when you want yo input data through the formula, `fit_xy()` when you want to specify data columns in a `dplyr` fashion, but again they do the same thing. 
+
+
+
+
+
+##  Prediction
+
+It very frustrting as we anticipated before that every time we are talking about prediction you are not supposed to know which data type you are goingto end up with. **Parnsip** simplfies that by uniforming it. In *Parnisip* no matter what model you are using you are going to end up with a **single .pred named Tibble column** (two more with the CI lower and upper) double with the __exact number of observations__ that is it supposed to have. most of the predict function are using insisde the `na.omit()` I might get a lower number of predictions back and then you shoulf figure out where the na rows at. So at the end with *Parnsip* you can cbind columns to your test/heldout dataset.
+
+
+```{r glmnet-miss}
+holdout <- mtcars %>% slice(30:32)
+holdout[1, "disp"] <- NA
+linear_reg(penalty = 0.01) %>% 
+  set_engine("glmnet") %>% 
+  fit(mpg ~ ., data = mtcars %>% slice(1:29)) %>% 
+  predict(new_data = holdout)
+```
+
+In the previous chunk you are holding out 3 observations and as expected you are having in the prediction .pred column tibble with 3 observations.
+
+Below we are using the `glmnet` for linear regression (it can also have logistics multinomila poisson and so on...), this uses a [different estimation method](https://web.stanford.edu/~hastie/glmnet/glmnet_alpha.html) called  _penalized maximum likelihood_ , and it actually requires to specify the lamdas penalities. What it does is computing the estimation of the prediction for all the lamdas taken. As a matter of fact we are having 80 values for each of the 3 overvations, obtaining a 80X2 for each of the 3. The two in the 80 is the vakue associated with the lambda. The first observation is all empty (nas) because it is a missing, but in the second and in the third you are having values. `pull(.pred)` drags the column out of dataframe object, `pluck()` helps you select the list of the list (list[[]]), then the splice operator selects the rows.
+
+
+```{r glmnet-multi-pred}
+preds <- 
+  linear_reg() %>%    # <- fit all penalty values
+  set_engine("glmnet") %>% 
+  fit(mpg ~ ., data = mtcars %>% slice(1:29)) %>% 
+  multi_predict(new_data = holdout)
+preds
+```
+
+
+
+```{r glmnet-multi-pred-details}
+preds %>% pull(.pred) %>% pluck(1) %>% slice(1:2)
+preds %>% pull(.pred) %>% pluck(2) %>% slice(1:5)
+```
+
+
+# Data Decriptors
+
+The package has _data descriptors_ that are abstract **placeholders** for characteristics of the data: 
+
+* `.obs()`: The current number of rows
+* `.preds()`: The number of columns (before indicators)
+* `.cols()`: The number of columns (after indicators)
+* `.facts()`: The number of factor predictors
+* `.lvls()`: A table  with the counts for each level
+* `.x()`: The predictor (data frame or matrix).
+* `.y()`: Outcome(s) (vector, matrix, or data frame)
+* `.dat()`: Training set
+
+
+
+
+If you think about Random Forest the main tuning parameter is one called _mtry_. And what random forest does is to build a tree and _mtry_ is a number of randomly selected predictor it will choose as candidates for that split. 
+So if you say _mtry_ = 3 and you have 100 predictors it will choose a random 3 out of 100 as candidates or candidate varibales to split on and then it gets the next split and choose another 3. The reason is that it has a big effect on performance so in this case the preparation phase for the model where you do not even specify the dataset is not very true for random forest, because actually here you need to have predictors so the number of columns in your dataset. So to solve that *Parnsip* has this thing called data descriptors we have this little functions that capture some aspects of data so `obs()` captures the number of rows and so on. So in the case below you are saying that you want to use the 75% of the predictors, you want it to floor results becuase you are needing an int. Then set the `randomForest` engine (make sure you have it installed eventhough I think it is in the dependencies).
+
+
+
+## Specifying `mtry`
+
+```{r dd, error=FALSE, echo=FALSE}
+mod <- rand_forest(trees = 1000, mtry = floor(.preds() * .75)) %>% 
+  set_engine("randomForest")
+
+```
+
