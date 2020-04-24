@@ -2,19 +2,13 @@
 title: "pipeline_parnsip"
 output: rmarkdown::github_document
 ---
-<script src="https://gist.github.com/jonschlinkert/5854601.js"></script>
 [![CRAN\_Status\_Badge](http://www.r-pkg.org/badges/version/parsnip)](https://cran.rstudio.com/package=parsnip)
 
-```{r, include = FALSE}
-knitr::opts_chunk$set(
-  collapse = TRUE,
-  comment = "#>",
-  fig.path = "img/logo.png",
-  out.width = "100%"
-)
-```
+<img src="img/logo.png" alt="drawing" width="139"/>
 
-the story behind *Parnsip* is quite funny it comes from a vegetable and it comes from a misunderstaning the word carrot with the `caret` package for modelling.
+
+
+The story behind *Parnsip* is quite funny it comes from a vegetable and it comes from a misunderstaning the word carrot with the `caret` package for modelling.
 
 the idea comes from the fact that R, before *Parnsip* did not have any conventions in modelling packages, and so each functions and model requires some *formatted* data instead of others. Talking about prediction we could have a plenty of formats like data frame, a matrix or a multidimensional array.  So the point is to go from model to model without stressing to much on syntax. 
 
@@ -50,7 +44,7 @@ Like `ggplot2` and `recipes`, `parsnip` defers the computations until specific p
 
 Let's create a model with a ridge penalty (i.e. weight decay). A model specification is created:
 
-```{r spec, message=FALSE}
+```{r spec, message=FALSE, warning= FALSE}
 library(tidymodels)
 reg_model <- linear_reg(penalty = 0.01)
 reg_model
@@ -145,9 +139,8 @@ So if you say _mtry_ = 3 and you have 100 predictors it will choose a random 3 o
 
 ## Specifying `mtry`
 
-```{r dd, error=FALSE, echo=FALSE}
+```{r dd}
 mod <- rand_forest(trees = 1000, mtry = floor(.preds() * .75)) %>% 
   set_engine("randomForest")
 
 ```
-
