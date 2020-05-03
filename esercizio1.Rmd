@@ -1,0 +1,193 @@
+---
+title: "esercitazione 1"
+author: "[Niccolò Salvini](https://niccolosalvini.netlify.app/)"
+date: "`r Sys.Date()`"
+output: 
+  rmarkdown::github_document:
+  toc: true
+---
+
+```{r, echo = FALSE, message=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.path = "img",
+  fig.width=12, 
+  fig.height=8
+)
+library(tidymodels)
+library(tidyverse)
+
+```
+
+## gentile introduzione
+
+Ho estratto questa esercitazione da un video tutorial su Youtube di [Julia Silge](https://www.youtube.com/watch?v=muf3-hrahHs), E' una Software Engineer di RStudio con esperienza come DS in StackOverflow e co. Ha un PhD in Astrofisica e tiene un [blog](https://juliasilge.com/) dove tratta estensivamente ma non esclusivamente la preparazione, la modellazione e il risultato dei modelli con `tidymodels`. I suoi tutorial sono scheletrici e frontali ma centrano il punto. L'esercitazione si centra attorno a un satellite del mondo `tidymodels`, cioè `parnsip`, in particolare la parte di tuning dei parametri in una ricerca a griglia.
+Questa esercitazione mi è servita a consolidare alcune nozioni sugli iper parametri di punta nella modellazione con random forest, mi è servita per avere una pipeline riproducibile e veloce che valuta e poi predice un fattore binario, infine a dare un workflow pronti-via di analisi per il tipo di dato utilizzato. La saga continua affrontando con diversi dataset, diversi segmenti del tidy-worflow di modellazione, sempre esplorando attraverso il mondo `tidymodels`. In questo breve tutorial `parsnip` è lo strumento centrale, anche se per arrivare lì è necessario passare prima dal 'villaggio' di `rsamples`, successivamente dalla città di `recipes.` Alla fine del viaggio si può ammirare da lontano sulla destra `yardstick`
+
+## il dataset
+
+
+```{r csv, message=FALSE}
+food_consumption = readr::read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-02-18/food_consumption.csv")
+
+food_consumption
+
+```
+
+il dataset è estratto da un csv e mostra il consumo di diversi alimenti per diverse nazioni. Le colonne sono 4:
+
+1. _country_ : il paese dove ha luogo il consumo
+1. _food_category_ : la categoria del cibo consumato
+1. _consumption_ : il consumo in unità di misura (non so quale)
+1. _co2_emission_: le emissioni di co2 
+
+obiettivo: fai un predizione sulla base del consumo dei diversi predittori se se il paese si trova in asia o no
+
+Non andremo a vedere, come anticipato nell'introduzione un workflow intero, ma un segmento dello stesso, con un focus sul tuning dei parametri. Prima di fare tutto questo è necessario riformattare il dataset di modo che contega solo variabili di interesse. La prima trasformazione viene fatta codificando la colonna _country_ e introducendone una successiva che contiene i continenti di quegli stessi paesi, per fare questo viene usato un pacchetto che si chiama. Questo pacchetto mappa ogni paese in un singolo continente (many-to-one). La funzione mutate() introduce la nuova colonna _continents_. `countrycode()` prende come input la colonna del dataframe che desidero trasformare, un'origine, cioè il tipo di trasformazione che desidero dare alla mia, lo voglio in lingua inglese ed in caratteri, avrei potuto scegliere in ZIP code (CAP) e destination è la colonna di destinazione della discretizzazione che abbiamo fatto.
+Controllo che la _discretizzazione_ non abbia creato NAs guardando il conto delle righe del dataset master contro quello appena generato.
+Decido anche che c02 non è di mio interesse quindi con l'operatore `select()` la deselezione (meno davanti). 
+Adesso decido di fare una tabella pivot con `pivot_wider()` cosicchè i fattori della colonna _food_category_  diventino predittori e decido di accomodarli secondo l'ordine del _consumption_, che infatti sparisce dalla nuova tabella pivot.
+Janitor aiuta a togliere le quotes alle colonne dei nomi. 
+Quindi decido di creare una nuovo predittore _asia_ schiacciando la colonna _continents_ di risposta in due livelli, asia e others, cosicchè sia una classificazione binaria. Successivamente mi sbarazzo di continente e di paese e infine cambio in fattore le colonne che ho introdotto che sono state codificate come carattere (ovvero _asia_). 
+
+```{r preprocess}
+
+library(countrycode)
+library(janitor)
+library(tidyr)
+
+food = food_consumption %>%
+  select(-co2_emmission) %>%
+  pivot_wider(
+    names_from = food_category,
+    values_from = consumption
+  ) %>%
+  clean_names() %>%
+  mutate(continent = countrycode(
+    country,
+    origin = "country.name",
+    destination = "continent"
+  )) %>%
+  mutate(asia = case_when(
+    continent == "Asia" ~ "Asia",
+    TRUE ~ "Other"
+  )) %>%
+  select(-country, -continent) %>%
+  mutate_if(is.character, factor)
+
+food
+
+```
+
+
+introduco un nuovo pacchetto che si chiama `GGally` che permettere di avere una veloce prospettiva del dataset disegnando una matrice di scatterplot dove le colonne e le righe sono i predittori e la diagonale principale rappresenta le pdf dei rispettivi predittori per i due livelli della variabile di risposta. In particolare se immaginiamo che la diagonale principale possa dividere la matrice quadrata in due triangoli distinti allora il triangolo *superiore* rappresenta la correlazioen tra le variabili di incrocio, mentre quello *inferiore* rappresenta lo scatterplot delle variabili di incontro. La funzione generatrice prende come input il dataset, le colonne per la matrice e la facettizzazione dei colori per la variabile di risposta (qui ci va sempre la variabile di risposta). Infine la variabile alpha è l'indice di trasparenza dei colori nella facettizazione, va settato ragionevolmente basso. 
+
+
+```{r ggally}
+library(GGally)
+ggscatmat(food, columns = 1:11, color = "asia", alpha = 0.7)
+
+```
+
+cosa si può notare:
+1. _beef_ and _poultry_ sono molto **correlati** per il livello others della variabile di risposta, mentre non lo è per l'asia. Questo significa che nei paese fuori dall'asia ad una crescita del consumo di pollame corrisponde una crescita più o meno lineare del consumo di carne di manzo. In asia, invece, un aumento del consumo di pollame non si lega con un aumento di consumo di manzo, riconducibile al fatto che in india non si mangia manzo.
+1. una differenza nell distribuzione per diversi livelli di _rice_ (sto guardando l' incontro tra rice e rice nella diagonale identità)
+1. stessa cosa si verifica tra _eggs_ and _milk_. Posso cominciare a pensare che il consumo di latte sia schiacciato verso lo zero dal peso indiano.
+
+Tutto questo mi porta a pensare che un modello a base di alberi di classificazione può essere un buon punto di partenza, perchè questi modelli facilmente distinguono quelle differenze sottolineate prima. (gif sotto del perchè).
+
+
+
+![gif](img/gif1.gif)
+
+
+
+
+## tuning 
+
+come tecina di resampling visto che ho una dimensionalità scarsa penso che si possa utilizzare un approccio *bootstrap* resamples. *Boostrap* consiste in un pescaggio ripetuto da un campione con la possibilità di ripetizione. Ho deciso 30 resamples, 25 sono i quelli standard. Ancora una volta non tutto questo è programmato nel senso di messo nella ricetta, ma ancora nessuno ha cominciato a cuocere, in sostanza nessun calcolo è stato fatto. Stampando la procedura di resampling si può vedere la scomposizione tra analysis e assessement set (che nel gergo tidy sono train e test set).
+
+
+```{r tune}
+  set.seed(1234)
+food_boot = bootstraps(food, times = 30)
+food_boot
+
+```
+
+## assetto del modello
+
+prima inizializzo l'oggetto s3 modello random forest che nel gergo tidy è `rand_forest()`, succssivamente specifico il modo, cioè lo scopo per cui faccio il modello, la classificazione e gli iperparametri. 
+ci sono pochi iperparametri in `rand_forest()` che necessitano il tuning, uno di questi (quello che conta forse di più) è di sicuro _mtry_, per completezza gli altri 3:
+
+1. _mtry_ : quanti predittori saranno randomicamenente pescati in ogni divisione dell'albero.
+1. _tree_ : di solito non vengono tunati, è necessario metterne un numero sufficiente.
+1. _min_n_: il numero minimo di punti in un nodo che sono necessari per dividere nuovamente l'albero.
+
+quindi la scelta ricade o sulle best practises o una fase di tuning degli iperparametri per trovare l'insieme migliore degli stessi per descrivere il fenomeno. La scelta ricade sul tuning.
+
+1. _mtry_ : tune
+1. _tree_ : 1000
+1. _min_n_: tune
+
+nell'oggetto devo specificare il motore col quale `rand_forest()` si deve muovere, "`ranger`" è il più comune. Ancora, per il momento, non è stato attuato nessun calcolo.
+In questo caso si è scelto ti utilizzare una griglia continua di valori, cioè tutti i valori, tutte le combinazioni per vedere quale è la combinazione migliore.
+Nella griglia specifico il modello, cioè variabile di risposta e e predittori, tutti, il modello con dentro i parametri da ottimizzare e l'insieme di resampling. 
+
+
+
+
+```{r modello_spec}
+rf_spec = rand_forest(
+  mode = "classification",
+  mtry = tune(),
+  trees = 1000,
+  min_n = tune()
+) %>%
+  set_engine("ranger")
+
+rf_spec
+
+
+```
+
+
+
+
+## metriche e valutazione
+
+
+Eseguo le operazioni in parallelo perchè la griglia è abbastanza lunga e computazionalmente dispendiosa. Occorerebbe circa 1 minuto per far girare tutti i calcoli in tempo $$O(n^2)$$, in parallelo riduco a lineare $$O(n)$$. 
+
+
+```{r operazioni_in_parallelo}
+doParallel::registerDoParallel()
+
+rf_grid = tune_grid(
+  asia ~ .,
+  model = rf_spec,
+  resamples = food_boot
+)
+
+rf_grid
+
+
+```
+
+sotto colleziono le metriche per il modello che ho chiuso, le metriche non essendo state specificate e non essendo stata costruita nessuna metrica personalizzate utilizza un insieme di precisione e ROC AUC.
+
+
+```{r metriche}
+rf_grid %>%
+  collect_metrics()
+
+
+```
+
+
+## sitografia
+
+- [Julia Silge](https://juliasilge.com/blog/food-hyperparameter-tune/) blog.
+- [Tidymodels](https://rviews.rstudio.com/2019/06/19/a-gentle-intro-to-tidymodels/) env
+- [YT video](https://www.youtube.com/watch?v=muf3-hrahHs) 

@@ -1,11 +1,13 @@
 pipeline\_parnsip
 ================
+Niccolò Salvini
+24/4/2020
 
 [![CRAN\_Status\_Badge](http://www.r-pkg.org/badges/version/parsnip)](https://cran.rstudio.com/package=parsnip)
 
 <img src="img/logo.png" alt="drawing" width="139"/>
 
-the story behind *Parnsip* is quite funny it comes from a vegetable and
+The story behind *Parnsip* is quite funny it comes from a vegetable and
 it comes from a misunderstaning the word carrot with the `caret` package
 for modelling.
 
@@ -100,7 +102,7 @@ reg_model %>%
 
     ## parsnip model object
     ## 
-    ## Fit time:  20ms 
+    ## Fit time:  0ms 
     ## 
     ## Call:  glmnet::glmnet(x = as.matrix(x), y = y, family = "gaussian") 
     ## 
