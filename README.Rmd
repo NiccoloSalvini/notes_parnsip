@@ -1,14 +1,46 @@
 ---
-title: "pipeline_parnsip"
-author: "Niccolò Salvini"
-date: "24/4/2020"
-output: rmarkdown::github_document
+output: 
+  rmarkdown:: github_document
+  toc: true
+# bibliography: references.bib
 ---
+
+<!-- README.md is generated from README.Rmd. Please edit that file -->
+
+
+# pipeline_parnsip <img src="img/logo.png" align="right" height="100" />
+_author_: **[Niccolò Salvini](https://niccolosalvini.netlify.app/)** 
+
+_date_: `r Sys.Date()`
+
 [![CRAN\_Status\_Badge](http://www.r-pkg.org/badges/version/parsnip)](https://cran.rstudio.com/package=parsnip)
 
-<img src="img/logo.png" alt="drawing" width="139"/>
+```{r global.options, include=FALSE}
+library(htmltools)
+knitr::opts_chunk$set(
+  warning = FALSE,  
+  strip.white = TRUE,     # if FALSE knitr will not remove white spaces at the beg or end
+  fig.path = "img/",      # file path to the directory DESTINATION where knitr shall store the
+  fig.width=12,           # the width for plots created by code chunk
+  fig.height=8,           # the height for plots created by code chunk
+  cache = FALSE           # if TRUE knitr will cache the results to reuse in future knits
+)
 
 
+knitr::knit_hooks$set(imgcenter = function(before, options, envir){  # to center image 
+  if (before) {                                                      # add imgcenter = TRUE
+    htmltools::HTML("<p align='center'>")                            # to the chunk options
+  } else {
+    htmltools::HTML("</p>")
+  }
+})
+
+set.seed(27) 
+```
+
+<br> <br> 
+
+## Introduction
 
 The story behind *Parnsip* is quite funny it comes from a vegetable and it comes from a misunderstaning the word carrot with the `caret` package for modelling.
 
@@ -65,7 +97,7 @@ As a matter of fact you are not imputting data since the beginning. Once you spe
 ```{r glmnet-fit-form}
 reg_model %>% 
   set_engine("glmnet") %>% 
-  fit(mpg ~ ., data = mtcars)
+  fit(mpg ~ ., data = mtcars) 
 ```
 
 
